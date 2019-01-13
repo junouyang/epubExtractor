@@ -12,9 +12,11 @@ import AEXML
 struct Epub2ChapterItem: ChapterItem {
     let id: String
     let playOrder: Int
+    let uniqueSrc: String
     let src: URL
     let label: String?
     let subChapters: [ChapterItem]
+    let bookmark: String?
     
     init?(xmlElement: AEXMLElement, epubContentsURL: URL) {
         guard let id = xmlElement.attributes["id"],
@@ -26,7 +28,14 @@ struct Epub2ChapterItem: ChapterItem {
         
         self.id = id
         self.playOrder = playOrder
-        self.src = epubContentsURL.appendingPathComponent(srcString)
+        self.uniqueSrc = srcString
+        let splitArray: [String.SubSequence] = srcString.split(separator: "#")
+        self.src = epubContentsURL.appendingPathComponent(String(splitArray[0]))
+        if splitArray.count > 1 {
+            self.bookmark = String(splitArray[1])
+        } else {
+            self.bookmark = nil
+        }
         self.label = xmlElement["navLabel"]["text"].value
         
         var subChapters: [Epub2ChapterItem] = []

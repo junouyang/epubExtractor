@@ -15,8 +15,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        addCustomMenuItems()
         return true
+    }
+
+    private func addCustomMenuItems() {
+        let newMenuItem = UIMenuItem(title: "Preview", action: MenuAction.Preview.selector())
+        
+        let menuController = UIMenuController.shared
+        var newItems = menuController.menuItems ?? [UIMenuItem]()
+        newItems.append(newMenuItem)
+        menuController.menuItems = newItems
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

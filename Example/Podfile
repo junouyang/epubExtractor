@@ -2,6 +2,7 @@ use_frameworks!
 
 target 'EpubExtractor_Example' do
   pod 'EpubExtractor', :path => '../'
+  pod 'SwiftSoup', '~> 1.7.4'
 
   target 'EpubExtractor_Tests' do
     inherit! :search_paths

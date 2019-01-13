@@ -8,18 +8,20 @@
 
 import UIKit
 import EpubExtractor
+import SwiftSoup
 
 class EpubDetailViewController: UIViewController {
-    private let epubExtractor = EPubExtractor()
-    
     @IBOutlet weak var tableView: UITableView!
     
+    var chapterContents: [String: String] = [:]
+
     var epubName: String? {
         didSet {
-            self.epubExtractor.delegate = self
+            epubReader.epubExtractor.delegate = self
             let destinationPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first
             let destinationURL = URL(string: destinationPath!)?.appendingPathComponent(epubName!)
-            self.epubExtractor.extractEpub(epubURL: Bundle.main.url(forResource: epubName, withExtension: "epub")!, destinationFolder: destinationURL!)
+            epubReader.epubExtractor.extractEpub(epubURL: Bundle.main.url(forResource: epubName, withExtension: "epub")!, destinationFolder: destinationURL!)
+            self.title = epubName
         }
     }
     
@@ -126,6 +128,41 @@ extension EpubDetailViewController: UITableViewDelegate, UITableViewDataSource {
         return cell
     }
     
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        if(indexPath.section != detailSection) {
+            let chapterVC = self.storyboard?.instantiateViewController(withIdentifier: "ChapterVC") as! ChapterViewController
+            let (chapter, nextChapter) = getChapters(indexPath)
+            chapterVC.content = readChapter(chapter, nextChapter)!
+            chapterVC.title = chapter.label
+
+            self.navigationController?.show(chapterVC, sender: self)
+        }
+    }
+
+    private func getChapters(_ indexPath: IndexPath) -> (ChapterItem, ChapterItem?) {
+        let chapter = self.epubPlainChapters[indexPath.item].chapter
+        let nextChapter = self.epubPlainChapters.count > indexPath.item ? self.epubPlainChapters[indexPath.item + 1].chapter : nil
+        return (chapter, nextChapter)
+    }
+
+    private func readChapter(_ indexPath: IndexPath) -> String? {
+        let (chapter, nextChapter) = getChapters(indexPath)
+        return readChapter(chapter, nextChapter)
+    }
+
+    func tableView(_ tableView: UITableView, shouldShowMenuForRowAt indexPath: IndexPath) -> Bool
+    {
+        return true
+    }
+    
+    func tableView(_ tableView: UITableView, canPerformAction action: UIKit.Selector, forRowAt indexPath: IndexPath, withSender sender: Any?) -> Bool {
+        return action == MenuAction.Preview.selector()
+    }
+    
+    func tableView(_ tableView: UITableView, performAction action: UIKit.Selector, forRowAt indexPath: IndexPath, withSender sender: Any?) {
+        // This is needed for custom menu even though it's not called.
+    }
+
     private func titleCell(indexPath: IndexPath) -> UITableViewCell {
         return self.commonCell(indexPath: indexPath, title: "Title", value: self.epub?.title)
     }
@@ -146,20 +183,20 @@ extension EpubDetailViewController: UITableViewDelegate, UITableViewDataSource {
         return self.commonCell(indexPath: indexPath, title: "Identifier", value: self.epub?.identifier)
     }
     
-    private func chapterCell(indexPath: IndexPath) -> UITableViewCell {
-        var cell = self.tableView.dequeueReusableCell(withIdentifier: "ChapterCell")
-        
-        if cell == nil {
-            cell = UITableViewCell(style: .default, reuseIdentifier: "ChapterCell")
-        }
-        
+    private func chapterCell(indexPath: IndexPath) -> UITableViewCell {        
         let plainChapter = self.epubPlainChapters[indexPath.item]
+
+        let chapterCell: ChapterCell = ChapterCell(style: .default, reuseIdentifier: "ChapterCell")
+        chapterCell.storyboard = self.storyboard
+        chapterCell.navigationController = self.navigationController
         
-        cell?.textLabel?.text = plainChapter.chapter.label
-        cell?.textLabel?.numberOfLines = 0
-        cell?.indentationLevel = plainChapter.indentationLevel
+        let (chapter, nextChapter) = getChapters(indexPath)
+        chapterCell.content = parseContent(readChapter(chapter, nextChapter)!)
+        chapterCell.textLabel?.text = plainChapter.chapter.label
+        chapterCell.textLabel?.numberOfLines = 0
+        chapterCell.indentationLevel = plainChapter.indentationLevel
         
-        return cell!
+        return chapterCell
     }
     
     private func commonCell(indexPath: IndexPath, title: String, value: String?) -> UITableViewCell {
@@ -173,6 +210,79 @@ extension EpubDetailViewController: UITableViewDelegate, UITableViewDataSource {
         cell?.detailTextLabel?.text = value
         
         return cell!
+    }
+
+    func readChapter(_ chapter: ChapterItem, _ nextChapter: ChapterItem?) -> String? {
+        var content = chapterContents[chapter.uniqueSrc]
+        if content == nil {
+            content = readContentFromUrl(chapter.src, chapter.bookmark, nextChapter?.bookmark )
+            chapterContents[chapter.uniqueSrc] = content
+        }
+        return content
+    }
+
+    private func readContentFromUrl(_ url: URL, _ currentBookmark: String?, _ nextBookmark: String?) -> String {
+        do {
+            return readChapterHtml(try String(contentsOf: url, encoding: .utf8), currentBookmark, nextBookmark);
+        } catch let error {
+            print("Error: \(error)")
+        }
+        return ""
+    }
+    
+    private func readChapterHtml(_ content: String, _ currentChapterBookmark: String?, _ nextChapterBookmark: String?) -> String {
+        var html = ""
+        if content.count != 0  {
+            do{
+                let doc: Document = try SwiftSoup.parse(content)
+                let body: Element = doc.body()!
+                if currentChapterBookmark != nil {
+                    html = "<html>\(doc.head()!)<body>"
+                    let children = body.getChildNodes()
+                    var found = false
+                    for child in children {
+                        let id = try child.attr("id")
+                        if !found {
+                            if(currentChapterBookmark != id) {
+                                continue
+                            } else {
+                                found = true
+                            }
+                        }
+                        if found {
+                            if nextChapterBookmark != nil && id == nextChapterBookmark {
+                                break
+                            } else {
+                                html += try child.outerHtml()
+                            }
+                        }
+                    }
+                    html += "</body>"
+                }
+                return html
+            } catch Exception.Error(let type, let message){
+                print(type)
+                print(message)
+            } catch {
+                print("error")
+            }
+        }
+        return ""
+    }
+
+    func parseContent(_ content: String) -> String {
+        if content.count != 0  {
+            do{
+                let body = try SwiftSoup.parse(content).body()!
+                return try body.text()
+            } catch Exception.Error(let type, let message){
+                print(type)
+                print(message)
+            } catch {
+                print("error")
+            }
+        }
+        return ""
     }
 }
 

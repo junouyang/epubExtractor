@@ -12,16 +12,19 @@ import AEXML
 struct Epub3ChapterItem: ChapterItem {
     let src: URL
     let label: String?
+    let uniqueSrc: String
+    let bookmark: String?
     let subChapters: [ChapterItem]
     
     init?(xmlElement: AEXMLElement, epubContentsURL: URL) {
         let aElement = xmlElement["a"]
         
         guard let srcString = aElement.attributes["href"] else {
-                return nil
+            return nil
         }
         
         self.src = epubContentsURL.appendingPathComponent(srcString)
+        self.uniqueSrc = srcString
         self.label = aElement.value
         
         var subChapters: [Epub3ChapterItem] = []
@@ -33,5 +36,6 @@ struct Epub3ChapterItem: ChapterItem {
         }
         
         self.subChapters = subChapters
+        self.bookmark = nil
     }
 }

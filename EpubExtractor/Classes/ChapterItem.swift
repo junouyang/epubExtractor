@@ -13,4 +13,6 @@ public protocol ChapterItem {
     var src: URL { get }
     var label: String? { get }
     var subChapters: [ChapterItem] { get }
+    var bookmark: String? { get }
+    var uniqueSrc: String { get }
 }
